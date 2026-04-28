@@ -1,45 +1,29 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <title>3D VR Panorama for Anya</title>
+    <title>Для Ани</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
         
-        /* Стили для оверлея с кнопкой */
-        #overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            background: rgba(0,0,0,0.7); z-index: 100; color: white; transition: opacity 0.5s;
-        }
-        button {
-            padding: 15px 30px; font-size: 18px; cursor: pointer;
-            border: none; border-radius: 5px; background: #E91E63; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-        }
-
-        /* --- СТИЛИ ДЛЯ ТАБЛИЧКИ "ПРИВЕТ, АНЯ" --- */
+        /* СТИЛИ ДЛЯ ТАБЛИЧКИ */
         .welcome-label {
             padding: 20px 40px;
-            background: rgba(255, 255, 255, 0.85); /* Полупрозрачный белый фон */
+            background: rgba(255, 255, 255, 0.9);
             color: #333;
             font-size: 40px;
             font-weight: bold;
             border-radius: 15px;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
-            border: 2px solid #E91E63; /* Розовая рамочка */
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border: 3px solid #E91E63;
             text-align: center;
-            pointer-events: none; /* Чтобы сквозь неё можно было кликать */
-            white-space: nowrap; /* Чтобы текст не переносился */
+            pointer-events: none;
+            white-space: nowrap;
         }
     </style>
 </head>
 <body>
-
-    <div id="overlay">
-        <h1>Объемная панорама</h1>
-        <button id="start-button">Включить гироскоп и войти</button>
-    </div>
 
     <script type="importmap">
         {
@@ -52,51 +36,46 @@
 
     <script type="module">
         import * as THREE from 'three';
-        import { DeviceOrientationControls } from 'three/addons/controls/DeviceOrientationControls.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-        // Импортируем рендерер для HTML-элементов
         import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 
         let camera, scene, renderer, cssRenderer, controls;
-        const overlay = document.getElementById('overlay');
-        const startButton = document.getElementById('start-button');
 
         function init() {
-            // --- 1. СЦЕНА И КАМЕРА ---
+            // 1. Сцена и камера
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 2000);
             camera.position.set(0, 0, 0.1);
 
-            // --- 2. ОБЫЧНЫЙ РЕНДЕРЕР (для 3D сферы) ---
+            // 2. Рендерер для 3D (панорама)
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.domElement.style.position = 'absolute'; // Важно для наложения
-            renderer.domElement.style.top = 0;
+            renderer.domElement.style.position = 'absolute';
+            renderer.domElement.style.top = '0';
             document.body.appendChild(renderer.domElement);
 
-            // --- 3. CSS3D РЕНДЕРЕР (для таблички) ---
+            // 3. Рендерер для текста (HTML)
             cssRenderer = new CSS3DRenderer();
             cssRenderer.setSize(window.innerWidth, window.innerHeight);
-            cssRenderer.domElement.style.position = 'absolute'; // Важно для наложения
-            cssRenderer.domElement.style.top = 0;
-            cssRenderer.domElement.style.pointerEvents = 'none'; // Чтобы можно было вращать панораму, кликая по экрану
+            cssRenderer.domElement.style.position = 'absolute';
+            cssRenderer.domElement.style.top = '0';
+            cssRenderer.domElement.style.pointerEvents = 'none'; 
             document.body.appendChild(cssRenderer.domElement);
 
-
-            // --- 4. ЗАГРУЗКА 3D ПАНОРАМЫ (СФЕРЫ) ---
+            // 4. Панорама и объем
             const loader = new THREE.TextureLoader();
             const texColor = loader.load('photo.jpg');
             const texDepth = loader.load('depth.jpg');
 
             const geometry = new THREE.SphereGeometry(500, 512, 256);
-            geometry.scale(-1, 1, 1); // Выворачиваем
+            geometry.scale(-1, 1, 1); 
 
             const material = new THREE.ShaderMaterial({
                 uniforms: {
                     uMap: { value: texColor },
                     uDepthMap: { value: texDepth },
-                    uThreshold: { value: 20.0 } // Сила объема
+                    uThreshold: { value: 15.0 } 
                 },
                 vertexShader: `
                     varying vec2 vUv;
@@ -122,54 +101,36 @@
             const sphere = new THREE.Mesh(geometry, material);
             scene.add(sphere);
 
-
-            // --- 5. СОЗДАНИЕ ТАБЛИЧКИ "ПРИВЕТ, АНЯ" ---
-            
-            // А. Создаем обычный HTML-элемент
+            // 5. Табличка
             const div = document.createElement('div');
             div.className = 'welcome-label';
             div.textContent = 'Привет, Аня!';
 
-            // Б. Оборачиваем его в 3D-объект Three.js
             const labelObject = new CSS3DObject(div);
-            
-            // В. Позиционируем его в 3D пространстве.
-            // Сфера имеет радиус 500, так что ставим табличку чуть ближе (например, на 400).
-            labelObject.position.set(0, 50, -400); // (X, Y, Z). Z=-400 это прямо перед камерой.
-            
-            // Г. Добавляем табличку на сцену
+            labelObject.position.set(0, 0, -350); // Прямо перед глазами
             scene.add(labelObject);
 
-
-            // --- 6. УПРАВЛЕНИЕ ---
+            // 6. Управление пальцем/мышкой
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
-            controls.rotateSpeed = -0.25;
+            controls.rotateSpeed = -0.25; // Инверсия для естественного вращения
             controls.enableZoom = false;
 
             animate();
         }
 
-
-        function hideOverlay() {
-            overlay.style.opacity = '0';
-            setTimeout(() => overlay.style.display = 'none', 500);
-        }
-
         function animate() {
             requestAnimationFrame(animate);
-            if (controls) controls.update();
-            
-            // Важно: рендерим оба слоя!
-            renderer.render(scene, camera);   // 3D сфера
-            cssRenderer.render(scene, camera); // HTML табличка
+            controls.update();
+            renderer.render(scene, camera);
+            cssRenderer.render(scene, camera);
         }
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            cssRenderer.setSize(window.innerWidth, window.innerHeight); // Не забываем про второй рендерер
+            cssRenderer.setSize(window.innerWidth, window.innerHeight);
         });
 
         init();
