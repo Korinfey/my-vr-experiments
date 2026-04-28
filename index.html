@@ -150,24 +150,6 @@
             animate();
         }
 
-        // --- ЛОГИКА АКТИВАЦИИ ГИРОСКОПА (как в прошлом шаге) ---
-        startButton.addEventListener('click', function() {
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(response => {
-                        if (response === 'granted') { activateGyro(); } else { hideOverlay(); }
-                    })
-                    .catch(console.error);
-            } else {
-                activateGyro();
-            }
-        });
-
-        function activateGyro() {
-            controls.dispose();
-            controls = new DeviceOrientationControls(camera);
-            hideOverlay();
-        }
 
         function hideOverlay() {
             overlay.style.opacity = '0';
