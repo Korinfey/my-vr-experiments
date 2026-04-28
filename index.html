@@ -1,19 +1,29 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <title>3D VR Panorama</title>
+    <title>3D VR Panorama + Gyro</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
-        #info {
-            position: absolute; top: 10px; width: 100%; text-align: center;
-            color: white; pointer-events: none; text-shadow: 1px 1px 2px black;
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.7); z-index: 10; color: white;
+        }
+        button {
+            padding: 15px 30px; font-size: 18px; cursor: pointer;
+            border: none; border-radius: 5px; background: #2196F3; color: white;
         }
     </style>
 </head>
 <body>
-    <div id="info">Тяните мышкой, чтобы вращать. Внизу кнопка для VR.</div>
+
+    <div id="overlay">
+        <h1>Объемная панорама</h1>
+        <button id="start-button">Включить гироскоп и войти</button>
+        <p style="font-size: 12px; margin-top: 10px;">(требуется для работы наклонов телефона)</p>
+    </div>
 
     <script type="importmap">
         {
@@ -26,91 +36,114 @@
 
     <script type="module">
         import * as THREE from 'three';
-        import { VRButton } from 'three/addons/webxr/VRButton.js';
+        import { DeviceOrientationControls } from 'three/addons/controls/DeviceOrientationControls.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-        // --- 1. ОСНОВНЫЕ НАСТРОЙКИ СЦЕНЫ ---
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-        // Ставим камеру чуть-чуть в сторону от центра, чтобы OrbitControls работали корректно
-        camera.position.set(0, 0, 0.1);
+        let camera, scene, renderer, controls;
+        const overlay = document.getElementById('overlay');
+        const startButton = document.getElementById('start-button');
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.xr.enabled = true; // Разрешаем VR
-        document.body.appendChild(renderer.domElement);
+        // --- ИНИЦИАЛИЗАЦИЯ ---
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.set(0, 0, 0.1);
 
-        // Добавляем кнопку VR (появится, если есть HTTPS или localhost)
-        document.body.appendChild(VRButton.createButton(renderer));
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
 
-        // --- 2. УПРАВЛЕНИЕ МЫШКОЙ И ПАЛЬЦЕМ ---
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true; // Плавная остановка вращения
-        controls.rotateSpeed = -0.25;  // Инвертируем вращение, чтобы было естественно "изнутри"
-        controls.enableZoom = false;   // Отключаем приближение, чтобы не "вылететь" за сферу
+            // Загрузка текстур
+            const loader = new THREE.TextureLoader();
+            const texColor = loader.load('photo.jpg');
+            const texDepth = loader.load('depth.jpg');
 
-        // --- 3. ЗАГРУЗКА ТЕКСТУР И СОЗДАНИЕ ОБЪЕМА ---
-        const loader = new THREE.TextureLoader();
-        
-        // ВНИМАНИЕ: Файлы должны называться именно так и лежать рядом с index.html
-        const texColor = loader.load('photo.jpg');
-        const texDepth = loader.load('depth.jpg');
+            const geometry = new THREE.SphereGeometry(500, 512, 256);
+            geometry.scale(-1, 1, 1);
 
-        // Геометрия: сфера с большим количеством полигонов (чтобы было чему изгибаться)
-        const geometry = new THREE.SphereGeometry(500, 512, 256);
-        geometry.scale(-1, 1, 1); // Выворачиваем сферу наизнанку
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uMap: { value: texColor },
+                    uDepthMap: { value: texDepth },
+                    uThreshold: { value: 20.0 }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    uniform sampler2D uDepthMap;
+                    uniform float uThreshold;
+                    void main() {
+                        vUv = uv;
+                        vec4 depthSample = texture2D(uDepthMap, vUv);
+                        float depth = depthSample.r;
+                        vec3 newPosition = position + normal * depth * uThreshold;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    varying vec2 vUv;
+                    uniform sampler2D uMap;
+                    void main() {
+                        gl_FragColor = texture2D(uMap, vUv);
+                    }
+                `
+            });
 
-        // Шейдер: специальный код для видеокарты, создающий 3D эффект
-        const material = new THREE.ShaderMaterial({
-            uniforms: {
-                uMap: { value: texColor },
-                uDepthMap: { value: texDepth },
-                uThreshold: { value: 15.0 } // Сила 3D эффекта. Можно менять от 5 до 30.
-            },
-            vertexShader: `
-                varying vec2 vUv;
-                uniform sampler2D uDepthMap;
-                uniform float uThreshold;
-                void main() {
-                    vUv = uv;
-                    // Читаем данные из карты глубины
-                    vec4 depthSample = texture2D(uDepthMap, vUv);
-                    float depth = depthSample.r;
-                    
-                    // Сдвигаем каждую точку сферы по направлению её нормали (от центра)
-                    // Чем белее пиксель на карте глубины, тем сильнее сдвиг
-                    vec3 newPosition = position + normal * depth * uThreshold;
-                    
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
-                }
-            `,
-            fragmentShader: `
-                varying vec2 vUv;
-                uniform sampler2D uMap;
-                void main() {
-                    // Просто накладываем цвет основного фото
-                    gl_FragColor = texture2D(uMap, vUv);
-                }
-            `
+            const sphere = new THREE.Mesh(geometry, material);
+            scene.add(sphere);
+
+            // По умолчанию включаем обычное вращение пальцем
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.rotateSpeed = -0.25;
+
+            animate();
+        }
+
+        // --- ОБРАБОТКА КЛИКА (Запрос доступа к гироскопу) ---
+        startButton.addEventListener('click', function() {
+            // Если это iPhone (iOS), нужно спросить разрешение
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response === 'granted') {
+                            activateGyro();
+                        } else {
+                            alert('Доступ к гироскопу отклонен.');
+                            hideOverlay();
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                // Для Android и компьютеров просто включаем
+                activateGyro();
+            }
         });
 
-        const sphere = new THREE.Mesh(geometry, material);
-        scene.add(sphere);
+        function activateGyro() {
+            // Переключаем управление на гироскоп
+            controls.dispose(); // Удаляем OrbitControls
+            controls = new DeviceOrientationControls(camera);
+            hideOverlay();
+        }
 
-        // --- 4. ЦИКЛ ОТРИСОВКИ ---
-        renderer.setAnimationLoop(() => {
-            controls.update(); // Обновляем положение камеры при движении мышкой
+        function hideOverlay() {
+            overlay.style.display = 'none';
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (controls) controls.update();
             renderer.render(scene, camera);
-        });
+        }
 
-        // Поддержка изменения размера окна
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
+        init();
     </script>
 </body>
 </html>
