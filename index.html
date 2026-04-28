@@ -121,11 +121,26 @@
         });
 
         function activateGyro() {
-            // Переключаем управление на гироскоп
-            controls.dispose(); // Удаляем OrbitControls
-            controls = new DeviceOrientationControls(camera);
-            hideOverlay();
-        }
+    // 1. Пытаемся запустить стандартный контроллер
+    try {
+        controls.dispose(); 
+        controls = new DeviceOrientationControls(camera);
+        
+        // 2. Проверяем, идут ли данные с датчика
+        window.addEventListener('deviceorientation', function(event) {
+            if (event.alpha !== null) {
+                console.log("Датчики работают!");
+                hideOverlay();
+            } else {
+                // Если данные приходят "пустые", значит датчик заблокирован системой
+                alert("Датчик отвечает 'null'. Проверьте настройки приватности телефона.");
+            }
+        }, { once: true });
+
+    } catch (e) {
+        alert("Ошибка при запуске гироскопа: " + e.message);
+    }
+}
 
         function hideOverlay() {
             overlay.style.display = 'none';
