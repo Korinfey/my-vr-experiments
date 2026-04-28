@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <title>3D VR Panorama</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        #info {
+            position: absolute; top: 10px; width: 100%; text-align: center;
+            color: white; pointer-events: none; text-shadow: 1px 1px 2px black;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">Тяните мышкой, чтобы вращать. Внизу кнопка для VR.</div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { VRButton } from 'three/addons/webxr/VRButton.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- 1. ОСНОВНЫЕ НАСТРОЙКИ СЦЕНЫ ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+        // Ставим камеру чуть-чуть в сторону от центра, чтобы OrbitControls работали корректно
+        camera.position.set(0, 0, 0.1);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.xr.enabled = true; // Разрешаем VR
+        document.body.appendChild(renderer.domElement);
+
+        // Добавляем кнопку VR (появится, если есть HTTPS или localhost)
+        document.body.appendChild(VRButton.createButton(renderer));
+
+        // --- 2. УПРАВЛЕНИЕ МЫШКОЙ И ПАЛЬЦЕМ ---
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; // Плавная остановка вращения
+        controls.rotateSpeed = -0.25;  // Инвертируем вращение, чтобы было естественно "изнутри"
+        controls.enableZoom = false;   // Отключаем приближение, чтобы не "вылететь" за сферу
+
+        // --- 3. ЗАГРУЗКА ТЕКСТУР И СОЗДАНИЕ ОБЪЕМА ---
+        const loader = new THREE.TextureLoader();
+        
+        // ВНИМАНИЕ: Файлы должны называться именно так и лежать рядом с index.html
+        const texColor = loader.load('photo.jpg');
+        const texDepth = loader.load('depth.jpg');
+
+        // Геометрия: сфера с большим количеством полигонов (чтобы было чему изгибаться)
+        const geometry = new THREE.SphereGeometry(500, 512, 256);
+        geometry.scale(-1, 1, 1); // Выворачиваем сферу наизнанку
+
+        // Шейдер: специальный код для видеокарты, создающий 3D эффект
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                uMap: { value: texColor },
+                uDepthMap: { value: texDepth },
+                uThreshold: { value: 15.0 } // Сила 3D эффекта. Можно менять от 5 до 30.
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                uniform sampler2D uDepthMap;
+                uniform float uThreshold;
+                void main() {
+                    vUv = uv;
+                    // Читаем данные из карты глубины
+                    vec4 depthSample = texture2D(uDepthMap, vUv);
+                    float depth = depthSample.r;
+                    
+                    // Сдвигаем каждую точку сферы по направлению её нормали (от центра)
+                    // Чем белее пиксель на карте глубины, тем сильнее сдвиг
+                    vec3 newPosition = position + normal * depth * uThreshold;
+                    
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+                }
+            `,
+            fragmentShader: `
+                varying vec2 vUv;
+                uniform sampler2D uMap;
+                void main() {
+                    // Просто накладываем цвет основного фото
+                    gl_FragColor = texture2D(uMap, vUv);
+                }
+            `
+        });
+
+        const sphere = new THREE.Mesh(geometry, material);
+        scene.add(sphere);
+
+        // --- 4. ЦИКЛ ОТРИСОВКИ ---
+        renderer.setAnimationLoop(() => {
+            controls.update(); // Обновляем положение камеры при движении мышкой
+            renderer.render(scene, camera);
+        });
+
+        // Поддержка изменения размера окна
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>
