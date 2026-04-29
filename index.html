@@ -119,6 +119,25 @@
             animate();
         }
 
+        // --- ДОБАВЛЯЕМ УПРАВЛЕНИЕ WASD ---
+            const keys = { w: false, a: false, s: false, d: false };
+            const speed = 2.0; // Скорость шага
+            
+            // Слушаем нажатия кнопок
+            window.addEventListener('keydown', (e) => {
+                if(e.key.toLowerCase() === 'w' || e.key.toLowerCase() === 'ц') keys.w = true;
+                if(e.key.toLowerCase() === 'a' || e.key.toLowerCase() === 'ф') keys.a = true;
+                if(e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы') keys.s = true;
+                if(e.key.toLowerCase() === 'd' || e.key.toLowerCase() === 'в') keys.d = true;
+            });
+            
+            // Слушаем отпускание кнопок
+            window.addEventListener('keyup', (e) => {
+                if(e.key.toLowerCase() === 'w' || e.key.toLowerCase() === 'ц') keys.w = false;
+                if(e.key.toLowerCase() === 'a' || e.key.toLowerCase() === 'ф') keys.a = false;
+                if(e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы') keys.s = false;
+                if(e.key.toLowerCase() === 'd' || e.key.toLowerCase() === 'в') keys.d = false;
+            });
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
@@ -132,6 +151,30 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             cssRenderer.setSize(window.innerWidth, window.innerHeight);
         });
+                    function animate() {
+                requestAnimationFrame(animate);
+                
+                // --- Логика ходьбы ---
+                // Узнаем, куда сейчас смотрит камера
+                const direction = new THREE.Vector3();
+                camera.getWorldDirection(direction);
+                direction.y = 0; // Запрещаем летать вверх/вниз
+                direction.normalize();
+            
+                // Вектор шага вбок
+                const right = new THREE.Vector3();
+                right.crossVectors(camera.up, direction).normalize();
+            
+                // Двигаем камеру и "цель" мышки одновременно
+                if (keys.w) { camera.position.addScaledVector(direction, speed); controls.target.addScaledVector(direction, speed); }
+                if (keys.s) { camera.position.addScaledVector(direction, -speed); controls.target.addScaledVector(direction, -speed); }
+                if (keys.a) { camera.position.addScaledVector(right, speed); controls.target.addScaledVector(right, speed); }
+                if (keys.d) { camera.position.addScaledVector(right, -speed); controls.target.addScaledVector(right, -speed); }
+            
+                controls.update();
+                renderer.render(scene, camera);
+                cssRenderer.render(scene, camera);
+            }
 
         init();
     </script>
