@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <title>Для Ани</title>
+    <title>3D World for Anya</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
         
-        /* СТИЛИ ДЛЯ ТАБЛИЧКИ */
+        /* Стили для таблички */
         .welcome-label {
             padding: 20px 40px;
             background: rgba(255, 255, 255, 0.9);
@@ -21,9 +21,22 @@
             pointer-events: none;
             white-space: nowrap;
         }
+
+        /* Подсказка по управлению */
+        #instructions {
+            position: absolute; bottom: 20px; left: 20px;
+            color: white; background: rgba(0,0,0,0.5);
+            padding: 10px; border-radius: 5px; pointer-events: none;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
+
+    <div id="instructions">
+        Вращение: Мышь / Палец <br>
+        Движение: W, A, S, D (английская раскладка)
+    </div>
 
     <script type="importmap">
         {
@@ -40,11 +53,13 @@
         import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 
         let camera, scene, renderer, cssRenderer, controls;
+        const keys = { w: false, a: false, s: false, d: false };
+        const moveSpeed = 1.5; // Скорость перемещения
 
         function init() {
             // 1. Сцена и камера
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 2000);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 3000);
             camera.position.set(0, 0, 0.1);
 
             // 2. Рендерер для 3D (панорама)
@@ -68,14 +83,14 @@
             const texColor = loader.load('photo.jpg');
             const texDepth = loader.load('depth.jpg');
 
-            const geometry = new THREE.SphereGeometry(500, 512, 256);
+            const geometry = new THREE.SphereGeometry(1000, 512, 256); // Увеличили сферу, чтобы было где ходить
             geometry.scale(-1, 1, 1); 
 
             const material = new THREE.ShaderMaterial({
                 uniforms: {
                     uMap: { value: texColor },
                     uDepthMap: { value: texDepth },
-                    uThreshold: { value: 15.0 } 
+                    uThreshold: { value: 30.0 } // Сделали объем чуть выразительнее
                 },
                 vertexShader: `
                     varying vec2 vUv;
@@ -107,39 +122,59 @@
             div.textContent = 'Привет, Аня!';
 
             const labelObject = new CSS3DObject(div);
-            labelObject.position.set(0, 0, -350); // Прямо перед глазами
+            labelObject.position.set(0, 0, -400); 
             scene.add(labelObject);
 
-            // 6. Управление пальцем/мышкой
+            // 6. Управление камерой (вращение)
             controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
-            controls.rotateSpeed = -0.25; // Инверсия для естественного вращения
+            controls.rotateSpeed = -0.25;
             controls.enableZoom = false;
+
+            // 7. Слушатели клавиатуры для ходьбы
+            window.addEventListener('keydown', (e) => handleKey(e.key, true));
+            window.addEventListener('keyup', (e) => handleKey(e.key, false));
 
             animate();
         }
 
-        // --- ДОБАВЛЯЕМ УПРАВЛЕНИЕ WASD ---
-            const keys = { w: false, a: false, s: false, d: false };
-            const speed = 2.0; // Скорость шага
-            
-            // Слушаем нажатия кнопок
-            window.addEventListener('keydown', (e) => {
-                if(e.key.toLowerCase() === 'w' || e.key.toLowerCase() === 'ц') keys.w = true;
-                if(e.key.toLowerCase() === 'a' || e.key.toLowerCase() === 'ф') keys.a = true;
-                if(e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы') keys.s = true;
-                if(e.key.toLowerCase() === 'd' || e.key.toLowerCase() === 'в') keys.d = true;
-            });
-            
-            // Слушаем отпускание кнопок
-            window.addEventListener('keyup', (e) => {
-                if(e.key.toLowerCase() === 'w' || e.key.toLowerCase() === 'ц') keys.w = false;
-                if(e.key.toLowerCase() === 'a' || e.key.toLowerCase() === 'ф') keys.a = false;
-                if(e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'ы') keys.s = false;
-                if(e.key.toLowerCase() === 'd' || e.key.toLowerCase() === 'в') keys.d = false;
-            });
+        function handleKey(key, isPressed) {
+            const k = key.toLowerCase();
+            if (k === 'w' || k === 'ц') keys.w = isPressed;
+            if (k === 's' || k === 'ы') keys.s = isPressed;
+            if (k === 'a' || k === 'ф') keys.a = isPressed;
+            if (k === 'd' || k === 'в') keys.d = isPressed;
+        }
+
         function animate() {
             requestAnimationFrame(animate);
+
+            // ЛОГИКА ПЕРЕМЕЩЕНИЯ (WASD)
+            const direction = new THREE.Vector3();
+            camera.getWorldDirection(direction);
+            direction.y = 0; // Ходим только по плоскости земли
+            direction.normalize();
+
+            const right = new THREE.Vector3();
+            right.crossVectors(camera.up, direction).normalize();
+
+            if (keys.w) {
+                camera.position.addScaledVector(direction, moveSpeed);
+                controls.target.addScaledVector(direction, moveSpeed);
+            }
+            if (keys.s) {
+                camera.position.addScaledVector(direction, -moveSpeed);
+                controls.target.addScaledVector(direction, -moveSpeed);
+            }
+            if (keys.a) {
+                camera.position.addScaledVector(right, moveSpeed);
+                controls.target.addScaledVector(right, moveSpeed);
+            }
+            if (keys.d) {
+                camera.position.addScaledVector(right, -moveSpeed);
+                controls.target.addScaledVector(right, -moveSpeed);
+            }
+
             controls.update();
             renderer.render(scene, camera);
             cssRenderer.render(scene, camera);
@@ -147,36 +182,4 @@
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            cssRenderer.setSize(window.innerWidth, window.innerHeight);
-        });
-                    function animate() {
-                requestAnimationFrame(animate);
-                
-                // --- Логика ходьбы ---
-                // Узнаем, куда сейчас смотрит камера
-                const direction = new THREE.Vector3();
-                camera.getWorldDirection(direction);
-                direction.y = 0; // Запрещаем летать вверх/вниз
-                direction.normalize();
-            
-                // Вектор шага вбок
-                const right = new THREE.Vector3();
-                right.crossVectors(camera.up, direction).normalize();
-            
-                // Двигаем камеру и "цель" мышки одновременно
-                if (keys.w) { camera.position.addScaledVector(direction, speed); controls.target.addScaledVector(direction, speed); }
-                if (keys.s) { camera.position.addScaledVector(direction, -speed); controls.target.addScaledVector(direction, -speed); }
-                if (keys.a) { camera.position.addScaledVector(right, speed); controls.target.addScaledVector(right, speed); }
-                if (keys.d) { camera.position.addScaledVector(right, -speed); controls.target.addScaledVector(right, -speed); }
-            
-                controls.update();
-                renderer.render(scene, camera);
-                cssRenderer.render(scene, camera);
-            }
-
-        init();
-    </script>
-</body>
-</html>
+            camera
